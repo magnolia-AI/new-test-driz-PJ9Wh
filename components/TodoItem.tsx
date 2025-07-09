@@ -1,100 +1,67 @@
-"use client";
+'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Check, Trash, Edit, Save } from 'lucide-react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Task } from '@/app/page';
+import { useState, useTransition } from 'react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { X, Edit, Save } from 'lucide-react';
+import { type Task } from '@/lib/schema';
+import { toggleTask, editTask, deleteTask } from '@/app/actions/tasks';
 
 interface TodoItemProps {
   task: Task;
-  onToggle: (id: string) => void;
-  onDelete: (id: string) => void;
-  onEdit: (id: string, newText: string) => void;
 }
 
-const TodoItem = ({ task, onToggle, onDelete, onEdit }: TodoItemProps) => {
+export function TodoItem({ task }: TodoItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(task.text);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [isPending, startTransition] = useTransition();
 
-  useEffect(() => {
-    if (isEditing) {
-      inputRef.current?.focus();
-    }
-  }, [isEditing]);
-
-  const handleEdit = () => {
-    if (isEditing) {
-      onEdit(task.id, editText);
-    }
-    setIsEditing(!isEditing);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      handleEdit();
-    } else if (e.key === 'Escape') {
+  const handleSave = () => {
+    startTransition(async () => {
+      await editTask(task.id, editText);
       setIsEditing(false);
-      setEditText(task.text);
-    }
+    });
   };
 
   return (
-    <motion.div
-      layout
-      className={`flex items-center p-4 rounded-lg transition-colors ${
-        task.completed
-          ? 'bg-muted/50 text-muted-foreground'
-          : 'bg-card hover:bg-muted/50'
-      }`}
-    >
-      <Button
-        variant="ghost"
-        size="icon"
-        className={`mr-4 rounded-full h-8 w-8 ${
-          task.completed ? 'bg-primary text-primary-foreground' : 'border'
-        }`}
-        onClick={() => onToggle(task.id)}
-      >
-        {task.completed && <Check size={16} />}
-      </Button>
+    <div className="flex items-center gap-2 p-2 rounded-lg bg-card">
+      <Checkbox
+        checked={task.completed}
+        onCheckedChange={() => startTransition(() => toggleTask(task.id))}
+        disabled={isPending}
+      />
       {isEditing ? (
         <Input
-          ref={inputRef}
           value={editText}
           onChange={(e) => setEditText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onBlur={handleEdit}
-          className="flex-grow bg-transparent"
+          className="flex-grow"
+          disabled={isPending}
         />
       ) : (
-        <span
-          className={`flex-grow cursor-pointer ${
-            task.completed ? 'line-through' : ''
-          }`}
-          onClick={() => onToggle(task.id)}
-        >
+        <span className={`flex-grow ${task.completed ? 'line-through text-muted-foreground' : ''}`}>
           {task.text}
         </span>
       )}
-      <div className="ml-4 flex gap-1">
-        <Button variant="ghost" size="icon" onClick={handleEdit}>
-          {isEditing ? <Save size={16} /> : <Edit size={16} />}
+      {isEditing ? (
+        <Button onClick={handleSave} size="icon" variant="ghost" disabled={isPending}>
+          <Save className="h-4 w-4" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-destructive"
-          onClick={() => onDelete(task.id)}
-        >
-          <Trash size={16} />
+      ) : (
+        <Button onClick={() => setIsEditing(true)} size="icon" variant="ghost" disabled={isPending}>
+          <Edit className="h-4 w-4" />
         </Button>
-      </div>
-    </motion.div>
+      )}
+      <Button
+        onClick={() => startTransition(() => deleteTask(task.id))}
+        size="icon"
+        variant="ghost"
+        className="text-destructive"
+        disabled={isPending}
+      >
+        <X className="h-4 w-4" />
+      </Button>
+    </div>
   );
-};
-
-export default TodoItem;
+}
 

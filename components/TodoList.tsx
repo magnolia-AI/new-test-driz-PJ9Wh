@@ -1,29 +1,61 @@
-"use client";
+'use client';
+import React from 'react';
 
-import { useDrop, useDrag } from 'react-dnd';
-import { motion } from 'framer-motion';
-import TodoItem from './TodoItem';
-import { Task } from '@/app/page';
-import { useRef } from 'react';
+
+import { useState, useCallback } from 'react';
+import { useDrop, useDrag, DropTargetMonitor } from 'react-dnd';
+import { TodoItem } from './TodoItem';
+import { type Task } from '@/lib/schema';
+import { reorderTasks } from '@/app/actions/tasks';
 
 interface TodoListProps {
-  tasks: Task[];
-  onToggle: (id: string) => void;
-  onDelete: (id: string) => void;
-  onEdit: (id: string, newText: string) => void;
-  onReorder: (dragIndex: number, hoverIndex: number) => void;
+  initialTasks: Task[];
 }
 
-const DraggableTodoItem = ({ task, index, onToggle, onDelete, onEdit, onReorder }: { task: Task, index: number } & Omit<TodoListProps, 'tasks' | 'onReorder'> & { onReorder: (dragIndex: number, hoverIndex: number) => void; }) => {
-  const ref = useRef<HTMLLIElement>(null);
-  const [{ handlerId }, drop] = useDrop({
-    accept: 'todo',
-    collect(monitor) {
-      return {
-        handlerId: monitor.getHandlerId(),
-      };
-    },
-    hover(item: { index: number }, monitor) {
+export function TodoList({ initialTasks }: TodoListProps) {
+  const [tasks, setTasks] = useState(initialTasks);
+
+  const moveTask = useCallback((dragIndex: number, hoverIndex: number) => {
+    setTasks((prevTasks) => {
+      const newTasks = [...prevTasks];
+      const [draggedItem] = newTasks.splice(dragIndex, 1);
+      newTasks.splice(hoverIndex, 0, draggedItem);
+      return newTasks;
+    });
+  }, []);
+
+  const handleDrop = async () => {
+    await reorderTasks(tasks);
+  };
+
+  return (
+    <div className="space-y-2">
+      {tasks.map((task, index) => (
+        <DraggableTodoItem
+          key={task.id}
+          index={index}
+          task={task}
+          moveTask={moveTask}
+          onDrop={handleDrop}
+        />
+      ))}
+    </div>
+  );
+}
+
+interface DraggableTodoItemProps {
+  task: Task;
+  index: number;
+  moveTask: (dragIndex: number, hoverIndex: number) => void;
+  onDrop: () => void;
+}
+
+function DraggableTodoItem({ task, index, moveTask, onDrop }: DraggableTodoItemProps) {
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  const [, drop] = useDrop({
+    accept: 'task',
+    hover(item: { index: number }, monitor: DropTargetMonitor) {
       if (!ref.current) {
         return;
       }
@@ -42,14 +74,15 @@ const DraggableTodoItem = ({ task, index, onToggle, onDelete, onEdit, onReorder 
       if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY) {
         return;
       }
-      onReorder(dragIndex, hoverIndex);
+      moveTask(dragIndex, hoverIndex);
       item.index = hoverIndex;
     },
+    drop: onDrop,
   });
 
   const [{ isDragging }, drag] = useDrag({
-    type: 'todo',
-    item: () => ({ id: task.id, index }),
+    type: 'task',
+    item: { index },
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),
     }),
@@ -58,53 +91,13 @@ const DraggableTodoItem = ({ task, index, onToggle, onDelete, onEdit, onReorder 
   drag(drop(ref));
 
   return (
-    <motion.li
+    <div
       ref={ref}
-      data-handler-id={handlerId}
-      layout
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      style={{
-        opacity: isDragging ? 0.5 : 1,
-        boxShadow: isDragging ? '0 4px 8px rgba(0,0,0,0.2)' : 'none',
-      }}
-      className="mb-2"
+      style={{ opacity: isDragging ? 0.5 : 1 }}
+      className="transition-opacity"
     >
-      <TodoItem
-        task={task}
-        onToggle={onToggle}
-        onDelete={onDelete}
-        onEdit={onEdit}
-      />
-    </motion.li>
+      <TodoItem task={task} />
+    </div>
   );
-};
-
-
-const TodoList = ({
-  tasks,
-  onToggle,
-  onDelete,
-  onEdit,
-  onReorder,
-}: TodoListProps) => {
-  return (
-    <ul>
-      {tasks.map((task, index) => (
-        <DraggableTodoItem
-          key={task.id}
-          index={index}
-          task={task}
-          onToggle={onToggle}
-          onDelete={onDelete}
-          onEdit={onEdit}
-          onReorder={onReorder}
-        />
-      ))}
-    </ul>
-  );
-};
-
-export default TodoList;
+}
 
