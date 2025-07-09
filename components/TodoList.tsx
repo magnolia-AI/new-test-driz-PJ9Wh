@@ -1,8 +1,5 @@
 'use client';
-import React from 'react';
-
-
-import { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { useDrop, useDrag, DropTargetMonitor } from 'react-dnd';
 import { TodoItem } from './TodoItem';
 import { type Task } from '@/lib/schema';
@@ -10,37 +7,6 @@ import { reorderTasks } from '@/app/actions/tasks';
 
 interface TodoListProps {
   initialTasks: Task[];
-}
-
-export function TodoList({ initialTasks }: TodoListProps) {
-  const [tasks, setTasks] = useState(initialTasks);
-
-  const moveTask = useCallback((dragIndex: number, hoverIndex: number) => {
-    setTasks((prevTasks) => {
-      const newTasks = [...prevTasks];
-      const [draggedItem] = newTasks.splice(dragIndex, 1);
-      newTasks.splice(hoverIndex, 0, draggedItem);
-      return newTasks;
-    });
-  }, []);
-
-  const handleDrop = async () => {
-    await reorderTasks(tasks);
-  };
-
-  return (
-    <div className="space-y-2">
-      {tasks.map((task, index) => (
-        <DraggableTodoItem
-          key={task.id}
-          index={index}
-          task={task}
-          moveTask={moveTask}
-          onDrop={handleDrop}
-        />
-      ))}
-    </div>
-  );
 }
 
 interface DraggableTodoItemProps {
@@ -51,7 +17,16 @@ interface DraggableTodoItemProps {
 }
 
 function DraggableTodoItem({ task, index, moveTask, onDrop }: DraggableTodoItemProps) {
-  const ref = React.useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const [{ isDragging }, drag] = useDrag({
+    type: 'task',
+    item: () => ({ id: task.id, index }),
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+    end: onDrop,
+  });
 
   const [, drop] = useDrop({
     accept: 'task',
@@ -67,7 +42,10 @@ function DraggableTodoItem({ task, index, moveTask, onDrop }: DraggableTodoItemP
       const hoverBoundingRect = ref.current?.getBoundingClientRect();
       const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2;
       const clientOffset = monitor.getClientOffset();
-      const hoverClientY = clientOffset!.y - hoverBoundingRect.top;
+      if (!clientOffset) {
+        return;
+      }
+      const hoverClientY = clientOffset.y - hoverBoundingRect.top;
       if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY) {
         return;
       }
@@ -77,15 +55,6 @@ function DraggableTodoItem({ task, index, moveTask, onDrop }: DraggableTodoItemP
       moveTask(dragIndex, hoverIndex);
       item.index = hoverIndex;
     },
-    drop: onDrop,
-  });
-
-  const [{ isDragging }, drag] = useDrag({
-    type: 'task',
-    item: { index },
-    collect: (monitor) => ({
-      isDragging: monitor.isDragging(),
-    }),
   });
 
   drag(drop(ref));
@@ -94,9 +63,41 @@ function DraggableTodoItem({ task, index, moveTask, onDrop }: DraggableTodoItemP
     <div
       ref={ref}
       style={{ opacity: isDragging ? 0.5 : 1 }}
-      className="transition-opacity"
+      className="cursor-move"
     >
       <TodoItem task={task} />
+    </div>
+  );
+}
+
+export function TodoList({ initialTasks }: TodoListProps) {
+  const [tasks, setTasks] = useState(initialTasks);
+
+  const moveTask = useCallback((dragIndex: number, hoverIndex: number) => {
+    setTasks((prevTasks) => {
+      const newTasks = [...prevTasks];
+      const [draggedItem] = newTasks.splice(dragIndex, 1);
+      newTasks.splice(hoverIndex, 0, draggedItem);
+      return newTasks;
+    });
+  }, []);
+
+  const handleDrop = async () => {
+    // The tasks state is updated via moveTask, so we can use it directly.
+    await reorderTasks(tasks);
+  };
+
+  return (
+    <div className="space-y-2">
+      {tasks.map((task, index) => (
+        <DraggableTodoItem
+          key={task.id}
+          index={index}
+          task={task}
+          moveTask={moveTask}
+          onDrop={handleDrop}
+        />
+      ))}
     </div>
   );
 }
